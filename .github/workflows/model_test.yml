@@ -36,7 +36,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - modelName: "facebook/opt-125m"
+          - modelName: "opt-125m"
             datasets: "piqa"
             device: "cpu"
             tasks: "text-generation"
@@ -45,6 +45,11 @@ jobs:
     steps:
       - name: Clean Up Working Directory
         run: sudo rm -rf ${{github.workspace}}/*
+      
+      - name: Load environment variables
+        if: ${{ matrix.device }} == "cpu"
+        run:
+          cat ~/actions-runner4/.env >> $GITHUB_ENV
 
       - name: Checkout out Repo
         uses: actions/checkout@v4
@@ -54,7 +59,7 @@ jobs:
     # We need this because GitHub needs to clone the branch to pipeline
       - name: Docker Build
         run: |
-          docker build -f ${{ github.workspace }}/.github/workflows/docker/common.dockerfile -t ${{ env.DOCKER_NAME }}:${{ env.DOCKER_TAG }} .
+          docker build -f ${{ github.workspace }}/.github/workflows/docker/common.dockerfile --build-arg http_proxy="${{ env.HTTP_PROXY_IMAGE_BUILD }}" --build-arg https_proxy="${{ env.HTTPS_PROXY_IMAGE_BUILD }}" -t ${{ env.DOCKER_NAME }}:${{ env.DOCKER_TAG }} .
 
       - name: Docker Run
         run: |
@@ -64,6 +69,7 @@ jobs:
           fi
           docker run -dit --disable-content-trust --privileged --name=${{ env.CONTAINER_NAME }} -v /dev/shm:/dev/shm \
           -v ${{ github.workspace }}:/GenAIEval \
+          -e http_proxy="${{ env.HTTP_PROXY_IMAGE_BUILD }}" -e https_proxy="${{ env.HTTPS_PROXY_IMAGE_BUILD }}" \
           ${{ env.DOCKER_NAME }}:${{ env.DOCKER_TAG }}
 
       - name: Binary build
@@ -102,7 +108,7 @@ jobs:
             && bash -x collect_log.sh --model=${{ matrix.modelName }} \
              --device=${{ matrix.device }} \
              --datasets=${{ matrix.datasets }} \
-             --tasks=${{ matrix.tasks }}
+             --tasks=${{ matrix.tasks }}"
 
       - name: Publish pipeline artifact
         uses: actions/upload-artifact@v4
@@ -110,7 +116,7 @@ jobs:
         with:
           name: ${{ matrix.device }}-${{ matrix.modelName }}
           path: |
-            ${{ github.workspace }}/${{ matrix.device }}/${{ matrix.modelName }}
-            ${{ github.workspace }}/.summary.log
+            ${{ github.workspace }}/${{ matrix.device }}-${{ matrix.tasks }}-${{ matrix.modelName }}-${{ matrix.datasets }}.log
+            ${{ github.workspace }}/summary.log
           if-no-files-found: ignore # 'warn' or 'ignore' are also available, defaults to `warn`
           retention-days: 60 # 1 <= retention-days <= 90
